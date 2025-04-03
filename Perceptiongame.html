@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LCA Perception Game - Horizontal Ordering</title>
+    <!-- Normalize CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.css" 
+          integrity="sha512-oHDEc8Xedq3f3mJe0bW0J7LE+VQBfNu1M+4Zcqtrt+M/78F9PR6ljnI6j6w/8K9p+E0Qk9QhCbtZrS+3hJx0Kg==" 
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- Source Sans Pro Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro&display=swap" rel="stylesheet">
+    <!-- Confetti Library -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    <style>
+        /* Simple parallax-like background animation */
+        @keyframes bgMove {
+            from {
+                background-position: 0 0;
+            }
+            to {
+                background-position: 100px 100px;
+            }
+        }
+
+        body {
+            font-family: 'Source Sans Pro', sans-serif;
+            background: url('https://iili.io/3B7p0xV.png') repeat;
+            animation: bgMove 60s linear infinite;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .logo-container {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .logo-container img {
+            max-width: 300px;
+            width: 100%;
+            height: auto;
+        }
+
+        .intro-text {
+            max-width: 800px;
+            margin: 0 auto 20px;
+            line-height: 1.5;
+        }
+
+        /* Game container is always displayed (no fade here) */
+        #gameContainer {
+            max-width: 800px;
+            margin: 20px auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Results container is hidden by default, but can fade in */
+        #resultContainer {
+            max-width: 800px;
+            margin: 20px auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            display: none; /* hidden at first */
+            opacity: 0;    /* start invisible */
+            transform: translateY(20px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        /* When we show it, we do display: block, then add .visible to fade in */
+        #resultContainer.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Ordering container with arrow background */
+        .ordering-container {
+            position: relative;
+            width: 100%;
+            height: 300px;
+            margin: 5px 0;
+            padding: 0 20%;
+            box-sizing: border-box;
+        }
+
+        .arrow-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            z-index: 1;
+        }
+
+        .sortable-list {
+            list-style: none;
+            padding: 0;
+            margin: 20px 0;
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            align-items: center;
+            overflow-x: auto;
+            flex-wrap: nowrap;
+        }
+
+        .ordering-container .sortable-list {
+            position: absolute;
+            top: 70%;
+            left: 0;
+            right: 0;
+            transform: translateY(-50%);
+            justify-content: space-around;
+            z-index: 2;
+            margin: 0;
+            padding: 0;
+        }
+
+        #resultList {
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: nowrap;
+            overflow: visible !important;
+        }
+
+        .sortable-item {
+            width: 100px;
+            height: 100px;
+            margin: 10px;
+            background: #e3e3e3;
+            border-radius: 5px;
+            cursor: grab;
+            transition: background 0.3s;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 5px;
+            box-sizing: border-box;
+            text-align: center;
+            overflow: hidden;
+        }
+
+        .sortable-item.dragging {
+            opacity: 0.5;
+        }
+
+        .sortable-item.correct {
+            background: #c8e6c9;
+        }
+
+        .sortable-item.wrong {
+            background: #ffcdd2;
+        }
+
+        .sortable-item img {
+            width: 80%;
+            height: auto;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .item-name {
+            margin-top: 5px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .footprint-info {
+            font-size: 10px;
+            color: #555;
+            margin-top: 3px;
+        }
+
+        .rank-info {
+            font-size: 10px;
+            color: #333;
+            margin-top: 3px;
+        }
+
+        /* Tooltip */
+        .tooltip {
+            visibility: hidden;
+            opacity: 0;
+            width: 200px;
+            background-color: #333;
+            color: #fff;
+            text-align: left;
+            border-radius: 5px;
+            padding: 8px;
+            position: absolute;
+            z-index: 9999;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-bottom: 5px;
+            transition: opacity 0.3s;
+            font-size: 12px;
+            line-height: 1.3;
+        }
+
+        .tooltip::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+
+        /* Wiggle on hover */
+        @keyframes wiggle {
+            0% { transform: rotate(0deg) scale(1); }
+            25% { transform: rotate(3deg) scale(1.05); }
+            50% { transform: rotate(0deg) scale(1); }
+            75% { transform: rotate(-3deg) scale(1.05); }
+            100% { transform: rotate(0deg) scale(1); }
+        }
+
+        #gameContainer .sortable-item:hover {
+            animation: wiggle 0.5s ease;
+        }
+
+        .result-item {
+            height: 140px;
+            overflow: visible;
+            cursor: default !important;
+        }
+
+        /* Meter styling */
+        .meter-container {
+            margin: 10px 0 20px;
+        }
+
+        .meter-bar {
+            position: relative;
+            height: 20px;
+            background: linear-gradient(to right, #f88 70%, #8f8 70%);
+            border-radius: 10px;
+            width: 80%;
+            margin: 0 auto;
+        }
+
+        .meter-pointer {
+            position: absolute;
+            bottom: 100%;
+            left: 35%;
+            transform: translateX(-50%);
+            margin-bottom: 8px;
+            background: #fff;
+            color: #000;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 3px;
+            white-space: nowrap;
+            z-index: 2;
+            transition: left 1s ease-out;
+        }
+
+        .meter-pointer::before {
+            content: "";
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 6px solid #000;
+            bottom: -6px;
+        }
+
+        /* Styled buttons */
+        button {
+            background-color: #e5004c;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            font-family: 'Source Sans Pro', sans-serif;
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 20px auto;
+            display: inline-block;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        button:hover {
+            background-color: #c40041;
+            transform: scale(1.05);
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        @media (max-width: 600px) {
+            .sortable-item {
+                width: 80px;
+                height: 80px;
+            }
+            .ordering-container {
+                padding: 0 5%;
+            }
+            .meter-bar {
+                width: 90%;
+            }
+        }
+
+        /* Best Score Display */
+        #bestScoreText {
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="logo-container">
+        <img src="https://quantis.com/wp-content/themes/quantis/assets/images/Quantis_logo_Qpink@300px.png" alt="Quantis Logo">
+    </div>
+    <p class="intro-text">
+        <strong>Think you can guess which everyday items have the biggest environmental impact?</strong>
+        Test your instincts and knowledge in this quick LCA Perception Game!
+        Drag and drop products in order from lowest to highest footprint—but beware, the results might surprise you! 🌍🔍
+    </p>
+
+    <p class="intro-text">
+        <strong>Ready to take the challenge? Let’s play! 🚀</strong>
+    </p>
+
+    <!-- Game Screen (always displayed) -->
+    <div id="gameContainer">
+        <div class="ordering-container">
+            <img src="https://iili.io/2pfoRGs.png" alt="Arrow" class="arrow-image">
+            <ul id="sortableList" class="sortable-list">
+                <!-- Plastic Bag -->
+                <li class="sortable-item" data-rank="1" data-explanation="Thin, lightweight plastic bags require relatively little raw material and energy to produce. The main impacts come from extracting fossil fuels (petrochemicals) and the manufacturing process. Although they have a low per‐bag carbon footprint, their single‐use nature and environmental pollution impact are separate concerns (e.g., litter, marine pollution)."
+                    data-footprint="~0.01–0.05 kg CO₂e per bag">
+                    <img src="https://iili.io/3B7xCKb.png" alt="Plastic Bag Icon">
+                    <span class="item-name">Plastic Bag</span>
+                </li>
+                <!-- Banana -->
+                <li class="sortable-item" data-rank="2" data-explanation="Bananas grow in large bunches, so the production and packaging energy per piece of fruit is low. Typically transported by ship (which is more carbon‐efficient than air freight). Minimal processing (often just rinsed and packaged in simple materials)."
+                    data-footprint="~0.08–0.1 kg CO₂e per banana">
+                    <img src="https://iili.io/3BYqWAP.png" alt="Banana Icon">
+                    <span class="item-name">Banana</span>
+                </li>
+                <!-- Tomato -->
+                <li class="sortable-item" data-rank="3" data-explanation="Greenhouse tomatoes may have higher energy inputs depending on production conditions."
+                    data-footprint="~0.2–0.3 kg CO₂e per tomato">
+                    <img src="https://iili.io/3BYqhDF.png" alt="Tomato Icon">
+                    <span class="item-name">Tomato</span>
+                </li>
+                <!-- T-Shirt -->
+                <li class="sortable-item" data-rank="4" data-explanation="Cotton cultivation uses water, fertilizers, and pesticides. Energy is needed for spinning, knitting, dyeing, and garment manufacturing. Washing and drying throughout the shirt’s lifetime adds to the total impact. Additionally, transport and packaging impacts can add up."
+                    data-footprint="~2–3 kg CO₂e per T-shirt">
+                    <img src="https://iili.io/3B7xzHQ.png" alt="T-Shirt Icon">
+                    <span class="item-name">T-Shirt</span>
+                </li>
+                <!-- Chocolate -->
+                <li class="sortable-item" data-rank="5" data-explanation="Cocoa farming can be land‐intensive and often involves deforestation, which increases emissions. Processing cocoa beans into chocolate involves multiple energy‐intensive steps (fermentation, roasting, conching). Packaging and transport (often international) further add to the footprint."
+                    data-footprint="~2.5–3 kg CO₂e per 100g bar">
+                    <img src="https://iili.io/3B7xoUx.png" alt="Chocolate Bar Icon">
+                    <span class="item-name">Chocolate</span>
+                </li>
+                <!-- Burger -->
+                <li class="sortable-item" data-rank="6" data-explanation="Beef cattle are a major source of methane (a potent greenhouse gas) through enteric fermentation. Feed production (often involving high‐impact feed crops like soy), farm operations, and land use changes all contribute. Processing, packaging, and cooking add additional impacts."
+                    data-footprint="~3–5 kg CO₂e per burger">
+                    <img src="https://iili.io/3BYqXN1.png" alt="Burger Icon">
+                    <span class="item-name">Burger</span>
+                </li>
+                <!-- Jeans -->
+                <li class="sortable-item" data-rank="7" data-explanation="From cotton farming to spinning, dyeing, sewing, and global transport, jeans have a multi‐step manufacturing process. Stone washing, bleaching, and other finishing processes can be energy- and chemical-intensive. The use phase (washing, drying, ironing) over a garment’s lifespan significantly contributes to total emissions."
+                    data-footprint="~30–40 kg CO₂e per pair">
+                    <img src="https://iili.io/3BYqwog.png" alt="Jeans Icon">
+                    <span class="item-name">Jeans</span>
+                </li>
+                <!-- Smartphone -->
+                <li class="sortable-item" data-rank="8" data-explanation="Complex supply chains involving mining of rare metals (e.g., cobalt, lithium) and specialized components. Energy‐intensive manufacturing (silicon wafers for chips, screen production, assembly under cleanroom conditions). Distribution, charging over lifetime, and end‐of‐life disposal or recycling also contribute."
+                    data-footprint="~50–80 kg CO₂e per phone">
+                    <img src="https://iili.io/3B7xnlj.png" alt="Smartphone Icon">
+                    <span class="item-name">Smartphone</span>
+                </li>
+            </ul>
+        </div>
+        <button id="submitBtn">Submit Answers</button>
+    </div>
+
+    <!-- Results Screen (fades in) -->
+    <div id="resultContainer">
+        <div class="meter-container">
+            <div class="meter-bar">
+                <div class="meter-pointer" id="meterPointer"></div>
+            </div>
+        </div>
+        <ul id="resultList" class="sortable-list"></ul>
+        <!-- Display Best Score -->
+        <p id="bestScoreText"></p>
+
+        <button id="restartBtn">Play Again</button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script>
+        // Retrieve or initialize personal best score from localStorage
+        let bestScore = localStorage.getItem('bestScore') 
+            ? parseInt(localStorage.getItem('bestScore')) 
+            : 0;
+
+        // Function to update best score display
+        function updateBestScoreDisplay() {
+            const bestScoreTextEl = document.getElementById('bestScoreText');
+            bestScoreTextEl.textContent = "Personal Best: " + bestScore + " / 8";
+        }
+
+        // Randomize the ordering of boxes in the ordering screen
+        function randomizeList(list) {
+            var items = Array.from(list.children);
+            items.sort(function() { return 0.5 - Math.random(); });
+            list.innerHTML = "";
+            items.forEach(function(item) {
+                list.appendChild(item);
+            });
+        }
+
+        // Setup
+        var sortableListEl = document.getElementById('sortableList');
+        randomizeList(sortableListEl);
+
+        var sortable = new Sortable(sortableListEl, {
+            animation: 150,
+            ghostClass: 'dragging',
+            direction: 'horizontal'
+        });
+
+        // Hide the results container initially
+        const resultContainer = document.getElementById('resultContainer');
+        resultContainer.style.display = 'none';
+
+        // Check the current order
+        function checkOrder() {
+            var items = document.querySelectorAll('#sortableList .sortable-item');
+            var results = [];
+            items.forEach(function(item, index) {
+                var nameEl = item.querySelector('.item-name');
+                var text = nameEl ? nameEl.textContent : item.textContent;
+                var imgEl = item.querySelector('img');
+                var imgSrc = imgEl ? imgEl.getAttribute('src') : '';
+                var rank = parseInt(item.getAttribute('data-rank'));
+                var isCorrect = (rank === index + 1);
+                results.push({
+                    text: text,
+                    rank: rank,
+                    explanation: item.getAttribute('data-explanation'),
+                    footprint: item.getAttribute('data-footprint'),
+                    isCorrect: isCorrect,
+                    imgSrc: imgSrc
+                });
+            });
+            return results;
+        }
+
+        // Fire confetti (2 seconds)
+        function fireConfetti() {
+            var duration = 2 * 1000;
+            var end = Date.now() + duration;
+
+            (function frame() {
+                // Launch two bursts from opposite sides
+                confetti({
+                    particleCount: 5,
+                    angle: 60,
+                    spread: 55,
+                    origin: { x: 0 }
+                });
+                confetti({
+                    particleCount: 5,
+                    angle: 120,
+                    spread: 55,
+                    origin: { x: 1 }
+                });
+
+                if (Date.now() < end) {
+                    requestAnimationFrame(frame);
+                }
+            }());
+        }
+
+        // Submit button event
+        document.getElementById('submitBtn').addEventListener('click', function() {
+            if (sortable) {
+                sortable.destroy();
+            }
+
+            var results = checkOrder();
+            // Hide the game container
+            document.getElementById('gameContainer').style.display = 'none';
+
+            // Show results container, then fade in
+            resultContainer.style.display = 'block';
+            // Force reflow so transition can start
+            resultContainer.offsetHeight;
+            resultContainer.classList.add('visible');
+
+            // Fill the results
+            var resultList = document.getElementById('resultList');
+            resultList.innerHTML = '';
+            var score = results.filter(item => item.isCorrect).length;
+
+            // Check if we beat the best score
+            if (score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('bestScore', bestScore);
+            }
+            // Update the best score display
+            updateBestScoreDisplay();
+
+            // If perfect score, fire confetti
+            if(score === 8) {
+                fireConfetti();
+            }
+
+            // Meter pointer details
+            var pointerPos = (score === 8) ? '80%' : '35%';
+            var pointerText = (score === 8) 
+                ? "You're among the 30% getting the order right! :)" 
+                : "You're in the 70% getting the order wrong :(";
+            var meterPointer = document.getElementById('meterPointer');
+            meterPointer.style.left = pointerPos;
+            meterPointer.textContent = pointerText;
+
+            // Display results with correct/wrong and tooltip
+            results.forEach(function(item) {
+                var li = document.createElement('li');
+                li.className = 'sortable-item result-item ' + (item.isCorrect ? 'correct' : 'wrong');
+                li.innerHTML =
+                    '<img src="' + item.imgSrc + '" alt="' + item.text + ' Icon">' +
+                    '<span class="item-name">' + item.text + '</span>' +
+                    '<div class="footprint-info">' + item.footprint + '</div>' +
+                    '<div class="rank-info">(Rank: ' + item.rank + ')</div>';
+
+                // Tooltip
+                var tooltip = document.createElement('div');
+                tooltip.className = 'tooltip';
+                tooltip.textContent = item.explanation;
+                li.appendChild(tooltip);
+
+                li.addEventListener('mouseenter', function() {
+                    tooltip.style.visibility = 'visible';
+                    tooltip.style.opacity = '1';
+                });
+                li.addEventListener('mouseleave', function() {
+                    tooltip.style.visibility = 'hidden';
+                    tooltip.style.opacity = '0';
+                });
+
+                resultList.appendChild(li);
+            });
+        });
+
+        // Restart button event
+        document.getElementById('restartBtn').addEventListener('click', function() {
+            var list = document.getElementById('sortableList');
+            randomizeList(list);
+            // Hide results container
+            resultContainer.style.display = 'none';
+            resultContainer.classList.remove('visible');
+
+            // Show game container again
+            document.getElementById('gameContainer').style.display = 'block';
+
+            // Reinitialize SortableJS
+            sortable = new Sortable(list, {
+                animation: 150,
+                ghostClass: 'dragging',
+                direction: 'horizontal'
+            });
+        });
+
+        // On page load, show the best score if it exists
+        document.addEventListener('DOMContentLoaded', updateBestScoreDisplay);
+    </script>
+</body>
+</html>
